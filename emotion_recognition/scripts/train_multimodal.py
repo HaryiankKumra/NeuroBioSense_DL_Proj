@@ -23,7 +23,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 
 from emotion_recognition.models.full_model import MultimodalEmotionModel
-from emotion_recognition.utils.dataset import build_neurobiosense_datasets
+from emotion_recognition.utils.dataset import NeuroBioSenseDataset, build_neurobiosense_datasets
 from emotion_recognition.utils.metrics import evaluate_classification
 
 
@@ -64,10 +64,9 @@ class LabelSmoothingNLLLoss(nn.Module):
         return per_sample_loss.mean()
 
 
-def compute_class_weights_from_loader(loader: DataLoader, num_classes: int = 7) -> torch.Tensor:
-    labels: List[int] = []
-    for _, _, y in loader:
-        labels.extend(y.numpy().astype(np.int64).tolist())
+def compute_class_weights_from_dataset(dataset: NeuroBioSenseDataset, num_classes: int = 7) -> torch.Tensor:
+    """Compute class weights from indexed labels without decoding media."""
+    labels = [sample.label_id for sample in dataset.samples]
     counts = np.bincount(np.asarray(labels, dtype=np.int64), minlength=num_classes).astype(np.float32)
     counts[counts == 0] = 1.0
     inv = 1.0 / counts
@@ -230,8 +229,9 @@ def maybe_load_pretrained_weights(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Stage 3 multimodal fine-tuning on NeuroBioSense")
-    parser.add_argument("--video-root", type=str, required=True)
-    parser.add_argument("--signal-csv", type=str, required=True)
+    parser.add_argument("--dataset-root", type=str, default="Dataset")
+    parser.add_argument("--video-root", type=str, default="")
+    parser.add_argument("--signal-csv", type=str, default="")
     parser.add_argument("--demographics-csv", type=str, default="")
     parser.add_argument("--facenet-stage1", type=str, default="facenet_stage1.pth")
     parser.add_argument("--signal-stage2", type=str, default="signal_stage2.pth")
@@ -255,10 +255,28 @@ def main() -> None:
     else:
         device = torch.device(args.device)
 
+    dataset_root = Path(args.dataset_root)
+    default_video_root = dataset_root / "NeuroBioSense Dataset" / "NeuroBioSense" / "Advertisement Categories"
+    default_signal_csv = dataset_root / "NeuroBioSense Dataset" / "NeuroBioSense" / "Biosignal Files" / "Pre-Processed" / "32-Hertz.csv"
+    default_demo_xlsx = dataset_root / "NeuroBioSense Dataset" / "NeuroBioSense" / "Participant Data" / "Participant_demographic_information.xlsx"
+
+    video_root = Path(args.video_root) if args.video_root else default_video_root
+    signal_csv_path = Path(args.signal_csv) if args.signal_csv else default_signal_csv
+
+    if args.demographics_csv:
+        demographics_path = Path(args.demographics_csv)
+    else:
+        demographics_path = default_demo_xlsx if default_demo_xlsx.exists() else None
+
+    if not video_root.exists():
+        raise FileNotFoundError(f"Video root not found: {video_root}")
+    if not signal_csv_path.exists():
+        raise FileNotFoundError(f"Signal CSV not found: {signal_csv_path}")
+
     train_ds, val_ds, test_ds, stats = build_neurobiosense_datasets(
-        video_root=args.video_root,
-        signal_csv_path=args.signal_csv,
-        demographics_csv_path=args.demographics_csv if args.demographics_csv else None,
+        video_root=video_root,
+        signal_csv_path=signal_csv_path,
+        demographics_csv_path=demographics_path,
         stage=3,
         t_v=10,
         t_s=128,
@@ -294,7 +312,7 @@ def main() -> None:
     model.apply_stage3_freezing()
     summary = summarize_parameter_groups(model)
 
-    class_weights = compute_class_weights_from_loader(train_loader, num_classes=7).to(device)
+    class_weights = compute_class_weights_from_dataset(train_ds, num_classes=7).to(device)
     criterion = LabelSmoothingNLLLoss(class_weights=class_weights, smoothing=0.1)
 
     optimizer = build_optimizer(model)

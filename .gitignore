@@ -44,3 +44,6 @@ logs/
 # Hugging Face / uploads
 hf_cache/
 tmp_uploads/
+
+#Dataset
+Dataset/

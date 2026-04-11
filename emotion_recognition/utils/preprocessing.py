@@ -17,6 +17,14 @@ import cv2
 import numpy as np
 import torch
 import torchvision.transforms as T
+from PIL import Image
+
+
+def _ensure_pil(image: np.ndarray | Image.Image) -> Image.Image:
+    """Convert ndarray inputs to PIL while preserving existing PIL images."""
+    if isinstance(image, Image.Image):
+        return image
+    return Image.fromarray(image)
 
 
 def build_video_transform(train: bool = False, stage: int = 3) -> T.Compose:
@@ -34,7 +42,7 @@ def build_video_transform(train: bool = False, stage: int = 3) -> T.Compose:
         # on heterogeneous FER/CK+ image conditions.
         transform = T.Compose(
             [
-                T.ToPILImage(),
+                T.Lambda(_ensure_pil),
                 T.Resize((160, 160)),
                 T.RandomHorizontalFlip(p=0.5),
                 T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
@@ -47,7 +55,7 @@ def build_video_transform(train: bool = False, stage: int = 3) -> T.Compose:
     elif train and stage == 3:
         transform = T.Compose(
             [
-                T.ToPILImage(),
+                T.Lambda(_ensure_pil),
                 T.Resize((160, 160)),
                 T.RandomHorizontalFlip(p=0.5),
                 T.ColorJitter(brightness=0.2, contrast=0.2),
@@ -58,7 +66,7 @@ def build_video_transform(train: bool = False, stage: int = 3) -> T.Compose:
     else:
         transform = T.Compose(
             [
-                T.ToPILImage(),
+                T.Lambda(_ensure_pil),
                 T.Resize((160, 160)),
                 T.ToTensor(),
                 T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),

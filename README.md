@@ -33,8 +33,9 @@ python -m compileall emotion_recognition
 
 ```bash
 python -m emotion_recognition.scripts.train_face \
-  --fer-root /path/to/FER2013 \
-  --ck-root /path/to/CK+ \
+  --dataset-root Dataset \
+  --fer-root Dataset/FER \
+  --ck-csv Dataset/CKPLUS/ckextended.csv \
   --epochs 50 \
   --batch-size 64 \
   --output artifacts/facenet_stage1.pth
@@ -44,27 +45,31 @@ python -m emotion_recognition.scripts.train_face \
 
 ```bash
 python -m emotion_recognition.scripts.train_signal \
-  --wesad-train-npz /path/to/wesad_train.npz \
-  --wesad-val-npz /path/to/wesad_val.npz \
+  --dataset-root Dataset \
+  --wesad-root Dataset/WESAD \
   --epochs 50 \
   --batch-size 32 \
   --output artifacts/signal_stage2.pth
 ```
 
-If WESAD is unavailable, skip Stage 2 and proceed to Stage 3.
+If NPZ files are missing, Stage 2 auto-prepares `artifacts/wesad_train.npz` and `artifacts/wesad_val.npz` from raw `S*/S*.pkl` files.
 
 ### 5) Stage 3: Multimodal fine-tuning (NeuroBioSense)
 
 ```bash
 python -m emotion_recognition.scripts.train_multimodal \
-  --video-root /path/to/NeuroBioSense/video_root \
-  --signal-csv /path/to/32-Hertz.csv \
-  --demographics-csv /path/to/Participant_demographic_information.csv \
+  --dataset-root Dataset \
   --facenet-stage1 artifacts/facenet_stage1.pth \
   --signal-stage2 artifacts/signal_stage2.pth \
   --epochs 50 \
   --batch-size 8 \
   --output artifacts/multimodal_stage3.pth
+```
+
+### Dataset readiness check (recommended first run)
+
+```bash
+python -m emotion_recognition.scripts.check_data --dataset-root Dataset
 ```
 
 ## Inference
@@ -128,3 +133,4 @@ git push -u origin main
 - Validation/test split is participant-level to avoid leakage.
 - Stage 3 evaluation aggregates all windows per clip (`mean` or `majority`).
 - Checkpoint stores normalization stats used by deployment app.
+- NeuroBioSense `32-Hertz.csv` files without participant/ad keys automatically use an emotion-conditioned signal fallback.

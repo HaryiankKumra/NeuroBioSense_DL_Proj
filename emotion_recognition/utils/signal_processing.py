@@ -23,6 +23,46 @@ import torch.nn.functional as F
 SIGNAL_COLUMNS: List[str] = ["BVP", "EDA", "TEMP", "ACC_X", "ACC_Y", "ACC_Z"]
 
 
+def normalize_subject_id(value: object) -> str:
+    """Normalize participant IDs across numeric/text formats."""
+    s = str(value).strip()
+    if not s:
+        return s
+
+    if s.endswith(".0"):
+        s = s[:-2]
+
+    # WESAD-like IDs such as S2 -> 2 for consistent matching.
+    if len(s) >= 2 and s[0].upper() == "S" and s[1:].isdigit():
+        return str(int(s[1:]))
+
+    try:
+        return str(int(float(s)))
+    except ValueError:
+        return s
+
+
+def normalize_ad_code(value: object) -> str:
+    """Normalize ad codes to Axx format used by NeuroBioSense clips."""
+    s = str(value).strip().upper()
+    if not s:
+        return s
+
+    if s.startswith("A"):
+        digits = s[1:]
+        if digits.isdigit():
+            return f"A{int(digits):02d}"
+        return s
+
+    if s.isdigit():
+        return f"A{int(s):02d}"
+
+    try:
+        return f"A{int(float(s)):02d}"
+    except ValueError:
+        return s
+
+
 def load_32hz_csv(csv_path: str | Path) -> pd.DataFrame:
     """Load NeuroBioSense preprocessed physiological file.
 
@@ -37,12 +77,31 @@ def load_32hz_csv(csv_path: str | Path) -> pd.DataFrame:
     # WHY canonicalization: source files may vary in exact capitalization.
     df.columns = [str(col).strip() for col in df.columns]
 
+    # Accept raw axis names used by NeuroBioSense preprocessed files.
+    alias_map = {
+        "X": "ACC_X",
+        "Y": "ACC_Y",
+        "Z": "ACC_Z",
+        "x": "ACC_X",
+        "y": "ACC_Y",
+        "z": "ACC_Z",
+    }
+    rename_map = {
+        src: dst
+        for src, dst in alias_map.items()
+        if src in df.columns and dst not in df.columns
+    }
+    if rename_map:
+        df = df.rename(columns=rename_map)
+
     missing = [c for c in SIGNAL_COLUMNS if c not in df.columns]
     if missing:
         raise ValueError(f"Missing required signal columns: {missing}")
 
     if "EMOTION" not in df.columns:
         raise ValueError("Missing required label column: EMOTION")
+
+    df["EMOTION"] = df["EMOTION"].astype(str).str.strip().str.upper()
 
     return df
 
@@ -56,19 +115,35 @@ def _find_column(df: pd.DataFrame, candidates: Sequence[str], required: bool = T
     return None
 
 
-def infer_id_columns(df: pd.DataFrame) -> Dict[str, str]:
-    """Infer participant/ad/timestamp columns from dataset variants."""
+def infer_id_columns(df: pd.DataFrame) -> Dict[str, str | None]:
+    """Infer participant/ad/timestamp columns from dataset variants.
+
+    Returns keys with value None when a column does not exist.
+    """
     participant_col = _find_column(
         df,
-        ["participant_id", "PARTICIPANT_ID", "Participant_ID", "participant", "PARTICIPANT"],
+        [
+            "participant_id",
+            "PARTICIPANT_ID",
+            "Participant_ID",
+            "participant",
+            "PARTICIPANT",
+            "SUBJECT ID",
+            "SUBJECT_ID",
+        ],
+        required=False,
     )
-    ad_col = _find_column(df, ["ad_code", "AD_CODE", "ad", "AD", "stimulus_id", "STIMULUS_ID"])
+    ad_col = _find_column(
+        df,
+        ["ad_code", "AD_CODE", "AD CODE", "ad", "AD", "stimulus_id", "STIMULUS_ID"],
+        required=False,
+    )
     time_col = _find_column(df, ["timestamp", "TIMESTAMP", "time", "TIME", "seconds", "SECOND"], required=False)
 
     return {
         "participant": participant_col,
         "ad": ad_col,
-        "time": time_col if time_col is not None else "__generated_time__",
+        "time": time_col,
     }
 
 
@@ -113,7 +188,7 @@ def extract_signal_segment(
     participant_id: str,
     ad_code: str,
     duration_sec: float,
-    id_columns: Dict[str, str],
+    id_columns: Dict[str, str | None],
 ) -> np.ndarray:
     """Extract participant+ad physiological segment aligned to clip duration.
 
@@ -124,7 +199,16 @@ def extract_signal_segment(
     a_col = id_columns["ad"]
     t_col = id_columns["time"]
 
-    mask = (df[p_col].astype(str) == str(participant_id)) & (df[a_col].astype(str) == str(ad_code))
+    if p_col is None or a_col is None:
+        raise KeyError("Signal DataFrame does not contain participant/ad columns for strict alignment.")
+
+    pid_norm = normalize_subject_id(participant_id)
+    ad_norm = normalize_ad_code(ad_code)
+
+    participant_series = df[p_col].map(normalize_subject_id)
+    ad_series = df[a_col].map(normalize_ad_code)
+
+    mask = (participant_series == pid_norm) & (ad_series == ad_norm)
     sub = df.loc[mask, SIGNAL_COLUMNS + ([t_col] if t_col in df.columns else [])].copy()
     if sub.empty:
         raise KeyError(f"No signal rows for participant={participant_id}, ad={ad_code}")
@@ -190,21 +274,42 @@ def load_duration_mapping(demographics_csv: str | Path) -> pd.DataFrame:
     The function is tolerant to column name variants and returns a normalized
     DataFrame with columns: participant_id, ad_code, duration_sec.
     """
-    df = pd.read_csv(demographics_csv)
+    path = Path(demographics_csv)
+    if path.suffix.lower() in {".xlsx", ".xls"}:
+        df = pd.read_excel(path)
+    else:
+        df = pd.read_csv(path)
+
     cols = [str(c).strip() for c in df.columns]
     df.columns = cols
 
-    participant_col = _find_column(df, ["participant_id", "PARTICIPANT_ID", "Participant_ID"])
-    ad_col = _find_column(df, ["ad_code", "AD_CODE", "ad", "AD"])
+    participant_col = _find_column(
+        df,
+        ["participant_id", "PARTICIPANT_ID", "Participant_ID", "SUBJECT ID", "SUBJECT_ID"],
+    )
+    ad_col = _find_column(df, ["ad_code", "AD_CODE", "AD CODE", "ad", "AD"])
     duration_col = _find_column(df, ["Duration", "duration", "DURATION", "duration_sec", "DURATION_SEC"])
+
+    # Forward-fill subject-level metadata rows commonly used in the workbook.
+    df[participant_col] = df[participant_col].ffill()
+
+    duration_series = pd.to_numeric(df[duration_col], errors="coerce").fillna(0.0).astype(float)
 
     out = pd.DataFrame(
         {
-            "participant_id": df[participant_col].astype(str),
-            "ad_code": df[ad_col].astype(str),
-            "duration_sec": pd.to_numeric(df[duration_col], errors="coerce").fillna(0.0).astype(float),
+            "participant_id": df[participant_col].map(normalize_subject_id),
+            "ad_code": df[ad_col].map(normalize_ad_code),
+            "duration_sec": duration_series,
         }
     )
+
+    # If duration values appear to be Excel day-fractions/timestamps, convert to seconds.
+    # Typical ad clip durations should be small; values in [0, 1) imply fractions of a day.
+    frac_mask = (out["duration_sec"] > 0.0) & (out["duration_sec"] < 1.0)
+    if frac_mask.any():
+        out.loc[frac_mask, "duration_sec"] = out.loc[frac_mask, "duration_sec"] * 86400.0
+
+    out = out[out["duration_sec"] > 0.0].reset_index(drop=True)
     return out
 
 
@@ -218,14 +323,16 @@ def lookup_duration(
     if duration_df is None:
         return float(fallback_duration_sec)
 
-    mask = (duration_df["participant_id"].astype(str) == str(participant_id)) & (
-        duration_df["ad_code"].astype(str) == str(ad_code)
-    )
+    pid_norm = normalize_subject_id(participant_id)
+    ad_norm = normalize_ad_code(ad_code)
+
+    mask = (duration_df["participant_id"].astype(str) == pid_norm) & (duration_df["ad_code"].astype(str) == ad_norm)
     sub = duration_df.loc[mask]
     if sub.empty:
         return float(fallback_duration_sec)
 
     dur = float(sub.iloc[0]["duration_sec"])
-    if not math.isfinite(dur) or dur <= 0:
+    # Guard against malformed metadata (e.g., timestamp-like values).
+    if not math.isfinite(dur) or dur <= 0 or dur > 600:
         return float(fallback_duration_sec)
     return dur

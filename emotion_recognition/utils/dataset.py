@@ -8,6 +8,7 @@ and aligns each clip with physiological rows from 32-Hertz.csv.
 from __future__ import annotations
 
 import random
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -27,13 +28,14 @@ from .signal_processing import (
     SIGNAL_COLUMNS,
     SignalNormalizationStats,
     augment_signal,
-    extract_signal_segment,
     fit_signal_normalizer,
     infer_id_columns,
     load_32hz_csv,
     load_duration_mapping,
     lookup_duration,
+    normalize_ad_code,
     normalize_signal_np,
+    normalize_subject_id,
     resample_signal_to_fixed_length,
 )
 
@@ -57,6 +59,7 @@ class ClipSample:
     video_path: Path
     participant_id: str
     ad_code: str
+    category: str
     emotion_code: str
     label_id: int
 
@@ -75,7 +78,7 @@ class NeuroBioSenseDataset(Dataset):
         self,
         samples: Sequence[ClipSample],
         signal_df: pd.DataFrame,
-        signal_id_columns: Dict[str, str],
+        signal_id_columns: Dict[str, str | None],
         signal_stats: SignalNormalizationStats,
         duration_df: Optional[pd.DataFrame],
         split: str,
@@ -101,6 +104,77 @@ class NeuroBioSenseDataset(Dataset):
         self.every_n = every_n
         self.stride = stride
         self.temporal_jitter = temporal_jitter
+
+        self._strict_signal_alignment = (
+            self.signal_id_columns.get("participant") is not None
+            and self.signal_id_columns.get("ad") is not None
+        )
+        self._signal_by_key: Dict[Tuple[str, str], np.ndarray] = {}
+        self._signal_by_emotion: Dict[str, np.ndarray] = {}
+        self._build_signal_cache()
+
+    def _build_signal_cache(self) -> None:
+        """Build fast lookup caches so __getitem__ avoids full DataFrame scans."""
+        if self._strict_signal_alignment:
+            p_col = self.signal_id_columns["participant"]
+            a_col = self.signal_id_columns["ad"]
+            assert p_col is not None and a_col is not None
+
+            key_df = self.signal_df[[p_col, a_col] + SIGNAL_COLUMNS].copy()
+            key_df["_pid"] = key_df[p_col].map(normalize_subject_id)
+            key_df["_ad"] = key_df[a_col].map(normalize_ad_code)
+
+            for (pid, ad_code), group in key_df.groupby(["_pid", "_ad"], sort=False):
+                self._signal_by_key[(pid, ad_code)] = group[SIGNAL_COLUMNS].to_numpy(dtype=np.float32)
+
+        emotion_series = self.signal_df["EMOTION"].astype(str).str.strip().str.upper()
+        for emotion_code in EMOTION_TO_ID.keys():
+            rows = self.signal_df.loc[emotion_series == emotion_code, SIGNAL_COLUMNS]
+            if len(rows) > 0:
+                self._signal_by_emotion[emotion_code] = rows.to_numpy(dtype=np.float32)
+
+    @staticmethod
+    def _slice_or_pad(signal_array: np.ndarray, target_len: int, train: bool) -> np.ndarray:
+        """Extract a fixed-length segment, padding with edge samples when needed."""
+        n = signal_array.shape[0]
+        if n == 0:
+            return np.zeros((target_len, len(SIGNAL_COLUMNS)), dtype=np.float32)
+
+        if n >= target_len:
+            if train and n > target_len:
+                start = random.randint(0, n - target_len)
+            else:
+                start = max(0, (n - target_len) // 2)
+            return signal_array[start : start + target_len]
+
+        pad = np.repeat(signal_array[-1:, :], repeats=target_len - n, axis=0)
+        return np.concatenate([signal_array, pad], axis=0)
+
+    def _resolve_signal_segment(self, sample: ClipSample, duration_sec: float) -> np.ndarray:
+        """Resolve clip-aligned signal segment.
+
+        Priority:
+        1) strict participant+ad lookup if available in 32-Hertz.csv
+        2) emotion-conditioned fallback pool when keys are unavailable
+        """
+        target_len = max(1, int(round(duration_sec * 32.0)))
+
+        if self._strict_signal_alignment:
+            key = (
+                normalize_subject_id(sample.participant_id),
+                normalize_ad_code(sample.ad_code),
+            )
+            seq = self._signal_by_key.get(key)
+            if seq is not None and len(seq) > 0:
+                return self._slice_or_pad(seq, target_len, train=self.train)
+
+        # Fallback when strict keys are not present in signal CSV.
+        seq = self._signal_by_emotion.get(sample.emotion_code)
+        if seq is None or len(seq) == 0:
+            seq = np.zeros((target_len, len(SIGNAL_COLUMNS)), dtype=np.float32)
+            return seq
+
+        return self._slice_or_pad(seq, target_len, train=self.train)
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -133,14 +207,8 @@ class NeuroBioSenseDataset(Dataset):
             fallback_duration_sec=raw_duration_sec,
         )
 
-        sig_segment = extract_signal_segment(
-            self.signal_df,
-            participant_id=sample.participant_id,
-            ad_code=sample.ad_code,
-            duration_sec=duration_sec,
-            id_columns=self.signal_id_columns,
-        )
-        # (?, 6) aligned to clip duration
+        sig_segment = self._resolve_signal_segment(sample, duration_sec=duration_sec)
+        # (?, 6) aligned by key if available; emotion-conditioned fallback otherwise
 
         sig_norm = normalize_signal_np(sig_segment, self.signal_stats)  # (?, 6) -> (?, 6)
         sig_resampled = resample_signal_to_fixed_length(sig_norm, target_length=self.t_s)  # (?,6) -> (T_s,6)
@@ -155,42 +223,42 @@ class NeuroBioSenseDataset(Dataset):
 
 
 def scan_video_samples(video_root: str | Path) -> List[ClipSample]:
-    """Scan NeuroBioSense clip hierarchy and build sample index."""
+    """Scan NeuroBioSense clip hierarchy and build sample index.
+
+    Supports both layouts:
+    - {participant}/{ad}/{emotion}/{clip}.mp4
+    - {category}/{participant}/{ad}/{emotion}/{clip}.mp4
+    """
     root = Path(video_root)
     if not root.exists():
         raise FileNotFoundError(f"Video root not found: {root}")
 
     samples: List[ClipSample] = []
-    for participant_dir in sorted(p for p in root.iterdir() if p.is_dir()):
-        participant_id = participant_dir.name
 
-        for ad_dir in sorted(p for p in participant_dir.iterdir() if p.is_dir()):
-            ad_code = ad_dir.name
+    clip_paths = sorted([p for p in root.rglob("*") if p.is_file() and p.suffix.lower() == ".mp4"])
+    for clip_path in clip_paths:
+        rel_parts = clip_path.relative_to(root).parts
+        if len(rel_parts) < 4:
+            continue
 
-            for emotion_dir in sorted(p for p in ad_dir.iterdir() if p.is_dir()):
-                emotion_code = emotion_dir.name
-                if emotion_code not in EMOTION_TO_ID:
-                    continue
-                label_id = EMOTION_TO_ID[emotion_code]
+        emotion_code = str(rel_parts[-2]).strip().upper()
+        if emotion_code not in EMOTION_TO_ID:
+            continue
 
-                # WHY case-insensitive MP4 pattern: source archives may mix .MP4/.mp4.
-                clip_paths = sorted(
-                    [
-                        p
-                        for p in emotion_dir.glob("*")
-                        if p.is_file() and p.suffix.lower() == ".mp4"
-                    ]
-                )
-                for clip_path in clip_paths:
-                    samples.append(
-                        ClipSample(
-                            video_path=clip_path,
-                            participant_id=participant_id,
-                            ad_code=ad_code,
-                            emotion_code=emotion_code,
-                            label_id=label_id,
-                        )
-                    )
+        ad_code = normalize_ad_code(rel_parts[-3])
+        participant_id = normalize_subject_id(rel_parts[-4])
+        category = rel_parts[-5] if len(rel_parts) >= 5 else "UNSPECIFIED"
+
+        samples.append(
+            ClipSample(
+                video_path=clip_path,
+                participant_id=participant_id,
+                ad_code=ad_code,
+                category=category,
+                emotion_code=emotion_code,
+                label_id=EMOTION_TO_ID[emotion_code],
+            )
+        )
 
     if not samples:
         raise RuntimeError(f"No MP4 samples found in hierarchy under: {root}")
@@ -224,11 +292,18 @@ def _subset_by_participants(samples: Sequence[ClipSample], participants: Sequenc
 
 def _build_signal_train_mask(
     signal_df: pd.DataFrame,
-    participant_col: str,
+    participant_col: str | None,
     train_participants: Sequence[str],
 ) -> np.ndarray:
+    if participant_col is None:
+        return np.ones(len(signal_df), dtype=bool)
+
     train_set = set(str(pid) for pid in train_participants)
-    mask = signal_df[participant_col].astype(str).isin(train_set).to_numpy(dtype=bool)
+    normalized = signal_df[participant_col].map(normalize_subject_id)
+    norm_train = {normalize_subject_id(pid) for pid in train_set}
+    mask = normalized.isin(norm_train).to_numpy(dtype=bool)
+    if not mask.any():
+        return np.ones(len(signal_df), dtype=bool)
     return mask
 
 
@@ -251,6 +326,13 @@ def build_neurobiosense_datasets(
 
     signal_df = load_32hz_csv(signal_csv_path)
     id_cols = infer_id_columns(signal_df)
+
+    if id_cols.get("participant") is None or id_cols.get("ad") is None:
+        warnings.warn(
+            "32-Hertz.csv does not expose participant/ad keys. "
+            "Using emotion-conditioned signal fallback (no strict clip-key alignment).",
+            stacklevel=2,
+        )
 
     train_mask = _build_signal_train_mask(signal_df, id_cols["participant"], train_ids)
     stats = fit_signal_normalizer(signal_df, train_mask=train_mask)

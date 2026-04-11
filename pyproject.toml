@@ -18,6 +18,7 @@ dependencies = [
   "scikit-learn>=1.4.0",
   "streamlit>=1.34.0",
   "Pillow>=10.0.0",
+  "openpyxl>=3.1.0",
 ]
 
 [tool.setuptools]
@@ -33,3 +34,4 @@ train-signal = "emotion_recognition.scripts.train_signal:main"
 train-multimodal = "emotion_recognition.scripts.train_multimodal:main"
 predict-clip = "emotion_recognition.scripts.predict_clip:main"
 realtime-infer = "emotion_recognition.scripts.inference_realtime:main"
+check-data = "emotion_recognition.scripts.check_data:main"
