@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "emotion-recognition-neurobiosense"
+version = "0.1.0"
+description = "Research-level multimodal emotion recognition for NeuroBioSense"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "torch>=2.2.0",
+  "torchvision>=0.17.0",
+  "facenet-pytorch>=2.6.0",
+  "opencv-python-headless>=4.9.0.80",
+  "numpy>=1.26.0",
+  "pandas>=2.1.0",
+  "scikit-learn>=1.4.0",
+  "streamlit>=1.34.0",
+  "Pillow>=10.0.0",
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["emotion_recognition*"]
+
+[project.scripts]
+train-face = "emotion_recognition.scripts.train_face:main"
+train-signal = "emotion_recognition.scripts.train_signal:main"
+train-multimodal = "emotion_recognition.scripts.train_multimodal:main"
+predict-clip = "emotion_recognition.scripts.predict_clip:main"
+realtime-infer = "emotion_recognition.scripts.inference_realtime:main"
