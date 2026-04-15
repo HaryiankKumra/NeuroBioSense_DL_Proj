@@ -110,7 +110,7 @@ class NeuroBioSenseDataset(Dataset):
             and self.signal_id_columns.get("ad") is not None
         )
         self._signal_by_key: Dict[Tuple[str, str], np.ndarray] = {}
-        self._signal_by_emotion: Dict[str, np.ndarray] = {}
+        self._signal_global: np.ndarray | None = None
         self._build_signal_cache()
 
     def _build_signal_cache(self) -> None:
@@ -127,11 +127,8 @@ class NeuroBioSenseDataset(Dataset):
             for (pid, ad_code), group in key_df.groupby(["_pid", "_ad"], sort=False):
                 self._signal_by_key[(pid, ad_code)] = group[SIGNAL_COLUMNS].to_numpy(dtype=np.float32)
 
-        emotion_series = self.signal_df["EMOTION"].astype(str).str.strip().str.upper()
-        for emotion_code in EMOTION_TO_ID.keys():
-            rows = self.signal_df.loc[emotion_series == emotion_code, SIGNAL_COLUMNS]
-            if len(rows) > 0:
-                self._signal_by_emotion[emotion_code] = rows.to_numpy(dtype=np.float32)
+        # Label-agnostic fallback pool when strict keys are unavailable.
+        self._signal_global = self.signal_df[SIGNAL_COLUMNS].to_numpy(dtype=np.float32)
 
     @staticmethod
     def _slice_or_pad(signal_array: np.ndarray, target_len: int, train: bool) -> np.ndarray:
@@ -155,7 +152,7 @@ class NeuroBioSenseDataset(Dataset):
 
         Priority:
         1) strict participant+ad lookup if available in 32-Hertz.csv
-        2) emotion-conditioned fallback pool when keys are unavailable
+        2) label-agnostic global fallback when keys are unavailable
         """
         target_len = max(1, int(round(duration_sec * 32.0)))
 
@@ -168,13 +165,27 @@ class NeuroBioSenseDataset(Dataset):
             if seq is not None and len(seq) > 0:
                 return self._slice_or_pad(seq, target_len, train=self.train)
 
-        # Fallback when strict keys are not present in signal CSV.
-        seq = self._signal_by_emotion.get(sample.emotion_code)
-        if seq is None or len(seq) == 0:
-            seq = np.zeros((target_len, len(SIGNAL_COLUMNS)), dtype=np.float32)
-            return seq
+        # Label-agnostic fallback when strict keys are not present in signal CSV.
+        seq_all = self._signal_global
+        if seq_all is None or len(seq_all) == 0:
+            return np.zeros((target_len, len(SIGNAL_COLUMNS)), dtype=np.float32)
 
-        return self._slice_or_pad(seq, target_len, train=self.train)
+        n = len(seq_all)
+        if n <= target_len:
+            return self._slice_or_pad(seq_all, target_len, train=self.train)
+
+        # WHY hash-based deterministic offset: preserves sample-specific consistency
+        # across epochs/eval while avoiding any direct label leakage.
+        hash_key = f"{sample.participant_id}|{sample.ad_code}|{sample.video_path.name}"
+        base_start = abs(hash(hash_key)) % (n - target_len + 1)
+
+        if self.train:
+            jitter = random.randint(-target_len // 2, target_len // 2)
+            start = int(np.clip(base_start + jitter, 0, n - target_len))
+        else:
+            start = int(base_start)
+
+        return seq_all[start : start + target_len]
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -330,7 +341,7 @@ def build_neurobiosense_datasets(
     if id_cols.get("participant") is None or id_cols.get("ad") is None:
         warnings.warn(
             "32-Hertz.csv does not expose participant/ad keys. "
-            "Using emotion-conditioned signal fallback (no strict clip-key alignment).",
+            "Using label-agnostic global signal fallback (no strict clip-key alignment).",
             stacklevel=2,
         )
 

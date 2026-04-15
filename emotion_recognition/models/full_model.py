@@ -27,34 +27,51 @@ class MultimodalEmotionModel(nn.Module):
 
     def __init__(self, num_classes: int = 7) -> None:
         super().__init__()
+        self.num_classes = int(num_classes)
         self.face_module = FaceModule()
         self.signal_module = SignalModule(channels=6)
         self.cross_modal_attention = CrossModalAttention(vid_dim=128, sig_dim=256, attn_dim=128)
         self.fusion = SoftGatingFusion(vid_dim=128, sig_dim=256, fused_dim=384)
-        self.classifier = EmotionClassifier(input_dim=384, num_classes=num_classes)
+        self.classifier = EmotionClassifier(input_dim=384, num_classes=self.num_classes)
 
     def apply_stage3_freezing(self) -> None:
         """Apply the Stage 3 trainable/frozen policy."""
         self.face_module.set_stage3_policy()
         self.signal_module.set_stage3_policy()
 
-    def forward(self, video: torch.Tensor, signal: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self,
+        video: torch.Tensor,
+        signal: torch.Tensor,
+        use_face: bool = True,
+        use_signal: bool = True,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward pass.
 
         Args:
             video: Tensor of shape (B, T_v, 3, 160, 160).
             signal: Tensor of shape (B, T_s, 6).
+            use_face: Whether to execute face branch (False uses zero face embeddings).
+            use_signal: Whether to execute signal branch (False uses zero signal embeddings).
 
         Returns:
-            output: Log-probabilities tensor of shape (B, 7).
+            output: Log-probabilities tensor of shape (B, C).
             confidence: Scalar for B=1 else tensor shape (B,).
         """
         bsz, t_v = video.shape[0], video.shape[1]
 
-        facenet_emb, vid_emb, _ = self.face_module(video)  # (B, T_v, 3, 160, 160) -> (B, T_v, 128), (B, 128)
-        assert facenet_emb.shape == (bsz, t_v, 128), f"Expected {(bsz, t_v, 128)}, got {tuple(facenet_emb.shape)}"
+        if use_face:
+            facenet_emb, vid_emb, _ = self.face_module(video)  # (B, T_v, 3, 160, 160) -> (B, T_v, 128), (B, 128)
+            assert facenet_emb.shape == (bsz, t_v, 128), f"Expected {(bsz, t_v, 128)}, got {tuple(facenet_emb.shape)}"
+        else:
+            facenet_emb = torch.zeros((bsz, t_v, 128), device=video.device, dtype=video.dtype)
+            vid_emb = torch.zeros((bsz, 128), device=video.device, dtype=video.dtype)
 
-        sig_emb, _, _ = self.signal_module(signal)  # (B, T_s, 6) -> (B, 256)
+        if use_signal:
+            sig_emb, _, _ = self.signal_module(signal)  # (B, T_s, 6) -> (B, 256)
+        else:
+            sig_emb = torch.zeros((bsz, 256), device=video.device, dtype=video.dtype)
+
         assert vid_emb.shape == (bsz, 128), f"Expected {(bsz, 128)}, got {tuple(vid_emb.shape)}"
         assert sig_emb.shape == (bsz, 256), f"Expected {(bsz, 256)}, got {tuple(sig_emb.shape)}"
 
@@ -62,11 +79,11 @@ class MultimodalEmotionModel(nn.Module):
         fused, _ = self.fusion(enhanced_vid, enhanced_sig)  # (B, 128)+(B, 256) -> (B, 384)
         assert fused.shape == (bsz, 384), f"Expected {(bsz, 384)}, got {tuple(fused.shape)}"
 
-        output = self.classifier(fused)  # (B, 384) -> (B, 7)
-        assert output.shape == (bsz, 7), f"Expected {(bsz, 7)}, got {tuple(output.shape)}"
+        output = self.classifier(fused)  # (B, 384) -> (B, C)
+        assert output.shape == (bsz, self.num_classes), f"Expected {(bsz, self.num_classes)}, got {tuple(output.shape)}"
 
-        probs = torch.exp(output)  # (B, 7) -> (B, 7)
-        confidence_vec = probs.max(dim=1).values  # (B, 7) -> (B,)
+        probs = torch.exp(output)  # (B, C) -> (B, C)
+        confidence_vec = probs.max(dim=1).values  # (B, C) -> (B,)
         confidence = confidence_vec.squeeze(0) if confidence_vec.numel() == 1 else confidence_vec
 
         return output, confidence
