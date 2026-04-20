@@ -1,0 +1,8 @@
+flowchart LR
+    V[Video Windows] --> FB[FaceNet + Projection + BiLSTM + Attention]
+    S[Signal Sequence] --> SB[Channel Attention + CNN + BiLSTM + Attention]
+    FB --> CA[Cross-Modal Attention]
+    SB --> CA
+    CA --> FG[Soft Reliability Gating Fusion]
+    FG --> CLF[Binary Valence Classifier]
+    CLF --> OUT[Negative / Positive]

@@ -133,4 +133,27 @@ git push -u origin main
 - Validation/test split is participant-level to avoid leakage.
 - Stage 3 evaluation aggregates all windows per clip (`mean` or `majority`).
 - Checkpoint stores normalization stats used by deployment app.
-- NeuroBioSense `32-Hertz.csv` files without participant/ad keys automatically use an emotion-conditioned signal fallback.
+- NeuroBioSense `32-Hertz.csv` files without participant/ad keys use a label-agnostic fallback segment strategy.
+
+## Final Project Submission Pack (Face + Physio + Multimodal)
+
+Run one command to train/evaluate all three modes on binary valence and auto-generate final report files:
+
+```bash
+./emotion_recognition/scripts/run_final_project_suite.sh
+```
+
+Outputs:
+- `artifacts/final_valence_face_only.json/.pth`
+- `artifacts/final_valence_signal_only.json/.pth`
+- `artifacts/final_valence_multimodal.json/.pth`
+- `reports/final_project_report.md`
+- `reports/final_project_report.tex`
+- `reports/diagrams/data_pipeline.mmd`
+- `reports/diagrams/architecture.mmd`
+
+Optional LaTeX build:
+
+```bash
+pdflatex -output-directory reports reports/final_project_report.tex
+```

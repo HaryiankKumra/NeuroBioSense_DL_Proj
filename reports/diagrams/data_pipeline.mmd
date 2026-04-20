@@ -1,0 +1,11 @@
+flowchart LR
+    V[Raw Video Clips] --> P[Preprocessing]
+    S[32-Hz Biosignal CSV] --> P
+    M[Participant Metadata] --> P
+    P --> D[Participant-Level Split\nTrain/Val/Test]
+    D --> F[Facial-Only Training]
+    D --> G[Physiological-Only Training]
+    D --> H[Multimodal Training]
+    F --> R[Final Evaluation + Report]
+    G --> R
+    H --> R
