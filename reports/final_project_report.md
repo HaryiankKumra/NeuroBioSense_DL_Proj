@@ -1,6 +1,6 @@
 # Final Project Report: Ad Impact Prediction (Binary Valence)
 
-Goal: predict ad impact while watching video as **negative** or **positive** from face, physiology, and multimodal input.
+Goal: predict ad impact while watching video as **negative** or **positive** from face, physiology, multimodal, and metadata-assisted input.
 
 ## Final Results
 
@@ -9,8 +9,9 @@ Goal: predict ad impact while watching video as **negative** or **positive** fro
 | Facial Only | final_valence_face_only | 0.4123 | 0.2919 | 1 | 0.2600 |
 | Physiological Only | final_valence_signal_only | 0.4123 | 0.2919 | 1 | 0.2600 |
 | Multimodal | final_valence_multimodal | 0.4123 | 0.2919 | 1 | 0.2600 |
+| Metadata-Assisted | final_valence_metadata | 0.6009 | 0.4934 | NA | NA |
 
-Best current model by macro-F1: Facial Only (macro-F1=0.2919, acc=0.4123).
+Best current model by macro-F1: Metadata-Assisted (macro-F1=0.4934, acc=0.6009).
 
 ## Dataset Management (How labels are handled)
 

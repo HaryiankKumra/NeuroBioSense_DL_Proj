@@ -74,6 +74,16 @@ run_case \
   --unfreeze-face-last-block \
   --unfreeze-signal-cnn
 
+# 4) Metadata-assisted binary valence baseline.
+"$PY" -u -m emotion_recognition.scripts.train_metadata_valence \
+  --dataset-root Dataset \
+  --seed 42 \
+  --skip-val-tuning \
+  --c 1.0 \
+  --class-weight none \
+  --output-json artifacts/final_valence_metadata.json \
+  --output-model artifacts/final_valence_metadata.pkl 2>&1 | tee logs/final_valence_metadata.log
+
 "$PY" -m emotion_recognition.scripts.generate_final_project_report \
   --artifacts-dir artifacts \
   --report-md reports/final_project_report.md \

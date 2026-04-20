@@ -147,6 +147,7 @@ Outputs:
 - `artifacts/final_valence_face_only.json/.pth`
 - `artifacts/final_valence_signal_only.json/.pth`
 - `artifacts/final_valence_multimodal.json/.pth`
+- `artifacts/final_valence_metadata.json/.pkl`
 - `reports/final_project_report.md`
 - `reports/final_project_report.tex`
 - `reports/diagrams/data_pipeline.mmd`

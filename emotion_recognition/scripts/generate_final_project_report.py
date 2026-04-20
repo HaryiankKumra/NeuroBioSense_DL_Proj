@@ -4,6 +4,7 @@ This script reads artifact JSON metrics for:
 - facial only
 - physiological only
 - multimodal
+- metadata-assisted baseline
 
 and produces:
 - reports/final_project_report.md
@@ -52,13 +53,16 @@ def resolve_case(artifacts_dir: Path, display_name: str, candidates: Iterable[st
         payload = load_json(artifacts_dir / f"{stem}.json")
         if payload is None:
             continue
+
+        best_epoch = payload.get("best_epoch")
+        best_val_macro_f1 = payload.get("best_val_macro_f1")
         return CaseResult(
             name=display_name,
             artifact_stem=stem,
             test_acc=float(payload.get("test_overall_acc", 0.0)),
             test_macro_f1=float(payload.get("test_macro_f1", 0.0)),
-            best_epoch=int(payload.get("best_epoch", -1)),
-            best_val_f1=float(payload.get("best_val_macro_f1", 0.0)),
+            best_epoch=int(best_epoch) if best_epoch is not None else None,
+            best_val_f1=float(best_val_macro_f1) if best_val_macro_f1 is not None else None,
         )
 
     return CaseResult(
@@ -112,7 +116,7 @@ def build_markdown(cases: List[CaseResult]) -> str:
     lines: List[str] = []
     lines.append("# Final Project Report: Ad Impact Prediction (Binary Valence)")
     lines.append("")
-    lines.append("Goal: predict ad impact while watching video as **negative** or **positive** from face, physiology, and multimodal input.")
+    lines.append("Goal: predict ad impact while watching video as **negative** or **positive** from face, physiology, multimodal, and metadata-assisted input.")
     lines.append("")
     lines.append("## Final Results")
     lines.append("")
@@ -280,8 +284,8 @@ Model & Artifact & Test Acc & Macro-F1 & Best Epoch & Best Val Macro-F1 \\\\
 Current performance is constrained mainly by weak cross-modal alignment when strict participant-ad-time keys are unavailable in processed biosignal files.
 This can make multimodal training collapse toward one dominant class.
 
-\\section*{{8. Conclusion}}
-This submission includes a complete end-to-end pipeline (facial-only, physiological-only, multimodal), data augmentation controls,
+\section*{{8. Conclusion}}
+This submission includes a complete end-to-end pipeline (facial-only, physiological-only, multimodal, metadata-assisted), data augmentation controls,
 and reproducible scripts for training and report generation suitable for project evaluation.
 
 \\end{{document}}
@@ -300,6 +304,7 @@ def main() -> None:
         resolve_case(artifacts_dir, "Facial Only", ["final_valence_face_only", "binary_valence_face_only"]),
         resolve_case(artifacts_dir, "Physiological Only", ["final_valence_signal_only", "binary_valence_signal_only"]),
         resolve_case(artifacts_dir, "Multimodal", ["final_valence_multimodal", "binary_valence_multimodal"]),
+        resolve_case(artifacts_dir, "Metadata-Assisted", ["final_valence_metadata", "final_valence_metadata_aug"]),
     ]
 
     report_md_path.parent.mkdir(parents=True, exist_ok=True)

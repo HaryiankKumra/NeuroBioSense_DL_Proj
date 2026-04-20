@@ -92,18 +92,19 @@ Model & Artifact & Test Acc & Macro-F1 & Best Epoch & Best Val Macro-F1 \\
 Facial Only & final\_valence\_face\_only & 0.4123 & 0.2919 & 1 & 0.2600 \\
 Physiological Only & final\_valence\_signal\_only & 0.4123 & 0.2919 & 1 & 0.2600 \\
 Multimodal & final\_valence\_multimodal & 0.4123 & 0.2919 & 1 & 0.2600 \\
+Metadata-Assisted & final\_valence\_metadata & 0.6009 & 0.4934 & NA & NA \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-\paragraph{Summary.} Best current model by macro-F1: Facial Only (macro-F1=0.2919, acc=0.4123).
+\paragraph{Summary.} Best current model by macro-F1: Metadata-Assisted (macro-F1=0.4934, acc=0.6009).
 
 \section*{7. Discussion}
 Current performance is constrained mainly by weak cross-modal alignment when strict participant-ad-time keys are unavailable in processed biosignal files.
 This can make multimodal training collapse toward one dominant class.
 
 \section*{8. Conclusion}
-This submission includes a complete end-to-end pipeline (facial-only, physiological-only, multimodal), data augmentation controls,
+This submission includes a complete end-to-end pipeline (facial-only, physiological-only, multimodal, metadata-assisted), data augmentation controls,
 and reproducible scripts for training and report generation suitable for project evaluation.
 
 \end{document}
