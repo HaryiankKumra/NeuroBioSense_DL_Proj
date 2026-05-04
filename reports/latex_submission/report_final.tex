@@ -479,7 +479,7 @@ The ROC curves visibly confirm the overwhelming predictive dominance of the phys
 \textbf{Physiological Only} & Immune to visual occlusions; captures subconscious biological arousal that cannot be faked. & Highly susceptible to motion artefacts; lacks semantic visual context; requires wearable sensor. \\[6pt]
 \textbf{End-to-End Neural} & Theoretically robust via cross-modal attention; per-dimension soft gating suppresses noisy modalities. & Critically sensitive to data alignment; collapses to majority class when signal--video pairing is broken. \\[6pt]
 \textbf{Late-Fusion Stacking} & Exceptionally robust (86.84\%); bypasses temporal alignment issues entirely; balances high signal accuracy with facial context. & Computationally heavier (requires running multiple models independently before meta-learner). \\[6pt]
-\textbf{Metadata-Assisted} & Highest standalone baseline (60.09\%); no sensor hardware; bypasses alignment issue entirely; fast inference. & Requires ad-level demographic metadata at inference; no physiological or visual generalisation. \\ \bottomrule
+\textbf{Metadata-Assisted} & Strong non-sensor baseline (60.09\%); bypasses alignment issue entirely; fast inference. & Requires ad-level demographic metadata at inference; no physiological or visual generalisation. \\ \bottomrule
 \end{tabular}%
 }
 \end{table}
