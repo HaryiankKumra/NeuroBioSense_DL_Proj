@@ -119,7 +119,9 @@ with col1:
                 if models_loaded:
                     # Preprocess Image
                     img_np = np.array(image)
-                    if img_np.shape[2] == 4:
+                    if len(img_np.shape) == 2:
+                        img_np = cv2.cvtColor(img_np, cv2.COLOR_GRAY2RGB)
+                    elif len(img_np.shape) == 3 and img_np.shape[2] == 4:
                         img_np = cv2.cvtColor(img_np, cv2.COLOR_RGBA2RGB)
                     frame = cv2.resize(img_np, (160, 160))
                     frame = frame.astype(np.float32) / 255.0
