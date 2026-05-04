@@ -38,11 +38,11 @@
     \vspace{2cm}
 
     {\Large
+    Hariyank Kumra \quad | \quad 102303088 \\
+    \vspace{0.3cm}
     Atishay Jain \quad | \quad 102303112 \\
     \vspace{0.3cm}
-    Aviral Bhargava \quad | \quad 102303726 \\
-    \vspace{0.3cm}
-    Hariyank Kumra \quad | \quad 102303088 \par
+    Aviral Bhargava \quad | \quad 102303726 \par
     }
 
     \vfill
@@ -471,14 +471,17 @@ The ROC curves visibly confirm the overwhelming predictive dominance of the phys
 \centering
 \caption{Comparative Strengths and Weaknesses across Model Configurations}
 \vspace{0.2cm}
-\begin{tabular}{p{3.2cm} p{5.6cm} p{5.6cm}}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{p{3.5cm} p{5.6cm} p{5.6cm}}
 \toprule
 \textbf{Model Config} & \textbf{Strengths} & \textbf{Weaknesses} \\ \midrule
 \textbf{Facial Only} & Strong spatial feature extraction; well-understood FaceNet backbone; no sensor hardware needed. & Fails under poor lighting, occlusion, or intentional emotion masking. \\[6pt]
 \textbf{Physiological Only} & Immune to visual occlusions; captures subconscious biological arousal that cannot be faked. & Highly susceptible to motion artefacts; lacks semantic visual context; requires wearable sensor. \\[6pt]
-\textbf{Multimodal} & Theoretically robust via cross-modal attention; per-dimension soft gating suppresses noisy modalities. & Critically sensitive to data alignment; collapses to majority class when signal--video pairing is broken. \\[6pt]
-\textbf{Metadata-Assisted} & Highest accuracy (60.09\%); no sensor hardware; bypasses alignment issue entirely; fast inference. & Requires ad-level demographic metadata at inference; no physiological or visual generalisation. \\ \bottomrule
-\end{tabular}
+\textbf{End-to-End Neural} & Theoretically robust via cross-modal attention; per-dimension soft gating suppresses noisy modalities. & Critically sensitive to data alignment; collapses to majority class when signal--video pairing is broken. \\[6pt]
+\textbf{Late-Fusion Stacking} & Exceptionally robust (86.84\%); bypasses temporal alignment issues entirely; balances high signal accuracy with facial context. & Computationally heavier (requires running multiple models independently before meta-learner). \\[6pt]
+\textbf{Metadata-Assisted} & Highest standalone baseline (60.09\%); no sensor hardware; bypasses alignment issue entirely; fast inference. & Requires ad-level demographic metadata at inference; no physiological or visual generalisation. \\ \bottomrule
+\end{tabular}%
+}
 \end{table}
 
 \subsection{Accuracy Improvement Paths Within the Same Architecture}
@@ -489,13 +492,15 @@ The core architecture is not the bottleneck --- the data alignment pipeline is. 
 \centering
 \caption{Accuracy Improvement Strategies for the End-to-End Architecture}
 \vspace{0.2cm}
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{p{4.0cm} p{4.8cm} p{5.0cm}}
 \toprule
 \textbf{Intervention} & \textbf{What to Change} & \textbf{Expected Impact} \\ \midrule
 \textbf{Fix CSV alignment keys} & Ensure \texttt{32-Hertz.csv} has \texttt{participant\_id} and \texttt{ad\_code} columns matching video filenames exactly. Currently the fallback fires (line 168, \texttt{dataset.py}) assigning a hash-offset signal slice with zero label correlation. & \textbf{Highest.} Eliminates the root cause entirely; allowing the neural models to reach the 86\% threshold established by Late-Fusion. \\[4pt]
 \textbf{Inject metadata into classifier} & Concatenate one-hot \texttt{(ad\_code, category)} to the 384-d fused embedding before the classifier. & \textbf{High.} Combines 60\% metadata baseline with any real physiological/visual signal learned. \\[4pt]
 \textbf{Increase augment-repeats} & Set \texttt{-{}-augment-repeats 8} and \texttt{-{}-balanced-sampler}. & \textbf{Medium.} Doubles minority-class exposure per epoch without new data. \\ \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 
 \noindent
