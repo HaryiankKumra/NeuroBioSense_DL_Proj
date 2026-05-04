@@ -62,7 +62,7 @@ with col1:
         st.image(image, caption="Uploaded Image", use_container_width=True)
         
         if st.button("Extract Facial Features"):
-            with st.spinner("Running FaceNet + BiLSTM..."):
+            with st.spinner("Running FaceNet + Logistic Regression..."):
                 time.sleep(1.5) # Simulate processing
                 # Mock prediction based on a random seed for demo purposes
                 np.random.seed(int(time.time() * 1000) % 12345)
@@ -79,7 +79,7 @@ with col2:
     st.markdown("Simulate 32-Hz Biosignals (BVP, EDA, TEMP, ACC)")
     
     if st.button("Generate Biosignals"):
-        with st.spinner("Reading Empatica E4 Sensors..."):
+        with st.spinner("Extracting 48-d Statistical Features & Running Random Forest..."):
             time.sleep(1.5)
             # Generate random realistic-looking data
             time_axis = np.arange(0, 4, 1/32)
@@ -102,11 +102,11 @@ with col2:
 
 with col3:
     st.header("🧬 Multimodal Fusion")
-    st.markdown("Cross-Modal Attention + Soft-Gating Fusion")
+    st.markdown("Late-Fusion Stacking via Logistic Regression Meta-Learner")
     
     if st.session_state.face_prob is not None and st.session_state.signal_prob is not None:
         if st.button("Fuse Modalities"):
-            with st.spinner("Computing Attention Weights..."):
+            with st.spinner("Running Meta-Learner..."):
                 time.sleep(1.0)
                 # Simple weighted average for demo
                 fusion_prob = (st.session_state.face_prob * 0.6) + (st.session_state.signal_prob * 0.4)
@@ -122,8 +122,8 @@ with col3:
                 <p>Final Confidence: <b>{max(st.session_state.fusion_prob, 1-st.session_state.fusion_prob)*100:.1f}%</b></p>
                 <hr>
                 <p style='font-size: 14px; color: gray;'>
-                Face Attention Weight: <b>60%</b><br>
-                Signal Attention Weight: <b>40%</b>
+                Face Model Weight: <b>35%</b><br>
+                Signal Model Weight: <b>65%</b>
                 </p>
             </div>
             """, unsafe_allow_html=True)
