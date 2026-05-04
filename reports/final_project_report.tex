@@ -1,6 +1,7 @@
 \documentclass[11pt]{article}
 \usepackage[margin=1in]{geometry}
 \usepackage{booktabs}
+\usepackage{graphicx}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit}
 \usepackage{setspace}
@@ -84,7 +85,11 @@ negative vs positive response.
 \end{itemize}
 
 \section*{6. Final Results}
-\begin{center}
+\begin{table}[h]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{llrrrr}
 \toprule
 Model & Artifact & Test Acc & Macro-F1 & Best Epoch & Best Val Macro-F1 \\
@@ -94,8 +99,9 @@ Physiological Only & final\_valence\_signal\_only & 0.4123 & 0.2919 & 1 & 0.2600
 Multimodal & final\_valence\_multimodal & 0.4123 & 0.2919 & 1 & 0.2600 \\
 Metadata-Assisted & final\_valence\_metadata & 0.6009 & 0.4934 & NA & NA \\
 \bottomrule
-\end{tabular}
-\end{center}
+\end{tabular}%
+}
+\end{table}
 
 \paragraph{Summary.} Best current model by macro-F1: Metadata-Assisted (macro-F1=0.4934, acc=0.6009).
 

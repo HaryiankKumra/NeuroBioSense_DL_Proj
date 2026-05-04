@@ -349,7 +349,6 @@ Table~\ref{tab:results} summarises all model configurations evaluated on the 228
 \caption{Model Performance Comparison --- Binary Valence Classification (228-clip test set)}
 \label{tab:results}
 \vspace{0.2cm}
-\resizebox{\textwidth}{!}{%
 \begin{tabular}{@{}lccc@{}}
 \toprule
 \textbf{Model} & \textbf{Test Accuracy} & \textbf{Test Macro-F1} & \textbf{Notes} \\ \midrule
@@ -358,8 +357,7 @@ Physiological Only (neural) & 0.4123 & 0.2919 & Alignment failure, Epoch 1 peak 
 Multimodal (neural)         & 0.4123 & 0.2919 & Alignment failure, Epoch 1 peak \\
 \textbf{Metadata LogReg}    & \textbf{0.6009} & 0.4934 & ad\_code + category, sklearn \\
 GBM + Signal Stats          & 0.5877 & \textbf{0.5838} & ad\_code + category + BVP/EDA/TEMP/ACC stats \\ \bottomrule
-\end{tabular}%
-}
+\end{tabular}
 \end{table}
 
 \noindent \textbf{Note on Macro-F1:} The GBM model achieves a lower accuracy (58.77\%) than the logistic regression baseline (60.09\%), but a higher Macro-F1 (0.5838 vs.~0.4934). This is because the GBM, trained with class-weight balancing and minority oversampling, is less biased toward the majority class and produces more balanced per-class recall --- a more meaningful metric under class imbalance.
